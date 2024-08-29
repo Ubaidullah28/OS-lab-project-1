@@ -1,0 +1,103 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+// Link with Ws2_32.lib to use Winsock functions
+#pragma comment(lib, "Ws2_32.lib")
+
+#define PORT 8080
+#define BUFFER_SIZE 1024
+
+// Function to create a client socket
+int create_client_socket() {
+    int client_fd;
+    WSADATA wsaData;
+
+    // Initialize Winsock
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        fprintf(stderr, "WSAStartup failed: %d\n", WSAGetLastError());
+        exit(EXIT_FAILURE);
+    }
+
+    // Create a socket using TCP/IP protocol (AF_INET), stream socket (SOCK_STREAM)
+    if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
+        fprintf(stderr, "socket failed: %d\n", WSAGetLastError());
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+
+    return client_fd;
+}
+
+// Function to connect to the server
+void connect_to_server(int sockfd, struct sockaddr_in *addr) {
+    // Attempt to connect to the server
+    if (connect(sockfd, (struct sockaddr *)addr, sizeof(*addr)) == SOCKET_ERROR) {
+        fprintf(stderr, "connect failed: %d\n", WSAGetLastError());
+        closesocket(sockfd);
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Function to read data from a socket
+ssize_t read_from_socket(int sockfd, char *buffer, size_t buffer_size) {
+    // Receive data from the socket
+    ssize_t bytes_read = recv(sockfd, buffer, buffer_size, 0);
+    if (bytes_read == SOCKET_ERROR) {
+        fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
+        exit(EXIT_FAILURE);
+    }
+    return bytes_read;
+}
+
+// Function to write data to a socket
+ssize_t write_to_socket(int sockfd, const char *buffer, size_t buffer_size) {
+    // Send data to the socket
+    ssize_t bytes_written = send(sockfd, buffer, buffer_size, 0);
+    if (bytes_written == SOCKET_ERROR) {
+        fprintf(stderr, "send failed: %d\n", WSAGetLastError());
+        exit(EXIT_FAILURE);
+    }
+    return bytes_written;
+}
+
+int main() {
+    int sockfd;
+    struct sockaddr_in serv_addr;
+    char buffer[BUFFER_SIZE] = {0};
+
+    // Create client socket
+    sockfd = create_client_socket();
+
+    // Define the server address and port
+    serv_addr.sin_family = AF_INET; // IPv4
+    serv_addr.sin_port = htons(PORT); // Convert port to network byte order
+
+    // Convert IPv4 address from text to binary form using inet_addr
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (serv_addr.sin_addr.s_addr == INADDR_NONE) {
+        fprintf(stderr, "Invalid address / Address not supported\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Connect to the server
+    connect_to_server(sockfd, &serv_addr);
+    printf("Connected to the server successfully\n");
+
+    // Send a message to the server
+    const char *message = "Hello from the client!";
+    write_to_socket(sockfd, message, strlen(message));
+
+    // Read response from the server
+    ssize_t bytes_read = read_from_socket(sockfd, buffer, BUFFER_SIZE);
+    printf("Received message from server: %s\n", buffer);
+
+    // Close the socket and clean up Winsock
+    closesocket(sockfd);
+    WSACleanup();
+
+    return 0;
+}

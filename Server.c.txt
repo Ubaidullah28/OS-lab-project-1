@@ -1,0 +1,136 @@
+// server.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+// Link with Ws2_32.lib to use Winsock functions
+#pragma comment(lib, "Ws2_32.lib")
+
+#define PORT 8080       // Port number for the server
+#define BACKLOG 5       // Number of pending connections allowed in the queue
+#define BUFFER_SIZE 1024 // Buffer size for receiving data
+
+// Function to create a server socket
+int create_server_socket() {
+    int server_fd;
+    WSADATA wsaData;
+
+    // Initialize Winsock
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        perror("WSAStartup failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Create a socket using TCP/IP protocol (AF_INET), stream socket (SOCK_STREAM)
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
+        perror("socket failed");
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+    return server_fd;
+}
+
+// Function to bind the server socket to an address
+void bind_socket(int sockfd, struct sockaddr_in *addr) {
+    // Bind the socket to the given address and port
+    if (bind(sockfd, (struct sockaddr *)addr, sizeof(*addr)) == SOCKET_ERROR) {
+        perror("bind failed");
+        closesocket(sockfd);
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Function to set the socket to listen for incoming connections
+void listen_on_socket(int sockfd, int backlog) {
+    // Mark the socket as a passive socket, that will be used to accept incoming connection requests
+    if (listen(sockfd, backlog) == SOCKET_ERROR) {
+        perror("listen failed");
+        closesocket(sockfd);
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Function to accept an incoming connection
+int accept_connection(int sockfd, struct sockaddr_in *addr, int *addrlen) {
+    int new_socket;
+    // Accept a connection request from a client
+    if ((new_socket = accept(sockfd, (struct sockaddr *)addr, (int *)addrlen)) == INVALID_SOCKET) {
+        perror("accept failed");
+        closesocket(sockfd);
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+    return new_socket;
+}
+
+// Function to read data from a socket
+ssize_t read_from_socket(int sockfd, char *buffer, size_t buffer_size) {
+    // Receive data from the connected client socket
+    ssize_t bytes_read = recv(sockfd, buffer, buffer_size, 0);
+    if (bytes_read == SOCKET_ERROR) {
+        perror("recv failed");
+        exit(EXIT_FAILURE);
+    }
+    return bytes_read;
+}
+
+// Function to write data to a socket
+ssize_t write_to_socket(int sockfd, const char *buffer, size_t buffer_size) {
+    // Send data to the connected client socket
+    ssize_t bytes_written = send(sockfd, buffer, buffer_size, 0);
+    if (bytes_written == SOCKET_ERROR) {
+        perror("send failed");
+        exit(EXIT_FAILURE);
+    }
+    return bytes_written;
+}
+
+int main() {
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    char buffer[BUFFER_SIZE] = {0};
+
+    // Create the server socket
+    server_fd = create_server_socket();
+
+    // Configure the server address structure
+    address.sin_family = AF_INET; // IPv4
+    address.sin_addr.s_addr = INADDR_ANY; // Listen on all available network interfaces
+    address.sin_port = htons(PORT); // Convert port to network byte order
+
+    // Bind the socket to the configured address and port
+    bind_socket(server_fd, &address);
+
+    // Set the socket to listen for incoming connections
+    listen_on_socket(server_fd, BACKLOG);
+
+    printf("Server is listening on port %d\n", PORT);
+
+    // Accept an incoming client connection
+    new_socket = accept_connection(server_fd, &address, &addrlen);
+    printf("Connection accepted\n");
+
+    // Read data sent by the client
+    ssize_t bytes_read = read_from_socket(new_socket, buffer, BUFFER_SIZE);
+    printf("Received message from client: %s\n", buffer);
+
+    // Send a response back to the client
+    const char *response = "Hello from the server!";
+    write_to_socket(new_socket, response, strlen(response));
+
+    // Close the client socket
+    closesocket(new_socket);
+
+    // Close the server socket
+    closesocket(server_fd);
+
+    // Clean up Winsock resources
+    WSACleanup();
+    return 0;
+}
